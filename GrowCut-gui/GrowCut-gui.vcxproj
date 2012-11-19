@@ -109,7 +109,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="GrowCut.cpp" />
+    <ClCompile Include="main2.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="GrowCut.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

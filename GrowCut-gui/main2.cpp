@@ -5,6 +5,7 @@
 #include <opencv/highgui.h>
 
 #include "opencv_windows_lib.h"
+#include "GrowCut.h"
 
 using namespace std;
 using namespace cv;
@@ -112,9 +113,16 @@ void mouse_func(int event, int x, int y, int flags, void* param){
 	case CV_EVENT_RBUTTONDOWN:
 #ifdef DEBUG_mouse_func
 		cerr<< "Right button down" <<endl;
+		cerr<< "flag>" << flags <<endl;
 #endif
-		mparam->before_pos_list = Point(x,y);
-		mparam->color = Scalar( 255,0,0 );
+		if( flags & CV_EVENT_FLAG_SHIFTKEY ){
+			mparam->before_pos_list = Point(x,y);
+			mparam->color = Scalar( 0, 255, 0);
+		}
+		else {
+			mparam->before_pos_list = Point(x,y);
+			mparam->color = Scalar( 255,0,0 );
+		}
 		break;
 
 	case CV_EVENT_RBUTTONUP:
@@ -154,22 +162,29 @@ void mouse_func(int event, int x, int y, int flags, void* param){
 void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 
 	//ÉâÉxÉãÇÃê∂ê¨
-	Mat label( label_image.size(), CV_64F );
-	for( int i=0; i<label_image.rows; i++ ){
-		unsigned char* line = (unsigned char*)label_image.ptr(i);
-		for( int h=0; h<label_image.cols; h++ ){
-			unsigned char *pix = line + 3 * h;
+	Mat label( label_image.size(), CV_8UC1 );
 
-			if( pix[2] > 100 ){
-				label.at<double>( i, h ) = 1.0;
+	for( int i=0; i<label_image.rows; i++ ){
+		unsigned char* line_image = (unsigned char*)label_image.ptr(i);
+		unsigned char* line_label = (unsigned char*)label.ptr(i);
+
+		for( int h=0; h<label_image.cols; h++ ){
+			unsigned char *pix = line_image + 3 * h;
+			unsigned char *pix_label = line_label + h;
+
+			if( pix[2] == 255 ){
+				*pix_label = 1;
 				//cout<< 'b' <<endl;
 			}
-			else if( pix[0] > 100 ){
+			else if( pix[0] == 255 ){
 				//cout<< 'r' <<endl;
-				label.at<double>( i, h ) = -1.0;
+				*pix_label = 2;
+			}
+			else if( pix[1] == 255 ){
+				*pix_label = 3;
 			}
 			else{
-				label.at<double>( i, h ) = 0.0;
+				*pix_label = 0;
 				//cout<< "" <<endl;
 			}
 		}
@@ -181,8 +196,8 @@ void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 	
 	for( int i=0; i<strength.rows; i++ ){
 		for( int h=0; h<strength.cols; h++ ){
-			double label_val = label.at<double>(i,h);
-			if( -0.5 < label_val && label_val < 0.5 ){
+			unsigned char label_val = label.at<unsigned char>(i,h);
+			if( label_val == 0 ){
 				strength.at<double>( i, h ) = 0.0;
 			}
 			else strength.at<double>( i, h ) = 1.0;
@@ -191,21 +206,43 @@ void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 	
 	Mat next_strength = strength.clone();
 	Mat next_label = label.clone();
+
+	ys::GrowCut _growCut( src_image, label );
 	
-	dst.create( src_image.size(), CV_8U);
+	dst.create( src_image.size(), CV_8UC3);
 	int converged = 0;
 	int itr_count = 0;
 	do{
 		
+		_growCut.getLabel().copyTo(label);
+		_growCut.getStrength().copyTo( strength );
+
 		itr_count++;
 		if( itr_count % 10 == 0 ){
 			//â¬éãâª
 			for( int i=0; i<label.rows; i++ ){
 				unsigned char* dst_line = dst.ptr(i);
 				for( int h=0; h<label.cols; h++ ){
-					if( label.at<double>(i,h) < -0.5 ) dst_line[h] = 0;
-					else if( label.at<double>(i,h) < 0.5 ) dst_line[h] = 128;
-					else dst_line[h] = 255;
+					unsigned char* dst_pix = dst_line + 3 * h;
+
+					if( label.at<unsigned char>(i,h) == 1 ){
+						dst_pix[0] = 0;
+						dst_pix[1] = 0;
+						dst_pix[2] = 255;
+					}
+					else if( label.at<unsigned char>(i,h) == 2 ){
+						dst_pix[0] = 255;
+						dst_pix[1] = 0;
+						dst_pix[2] = 0;
+					}
+					else if( label.at<unsigned char>(i,h) == 3 ){
+						dst_pix[0] = 0;
+						dst_pix[1] = 255;
+						dst_pix[2] = 0;
+					}
+					else {
+						dst_line[h] = 128;
+					}
 				}
 			}
 
@@ -219,72 +256,7 @@ void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 			}
 		}
 
-		converged = 0;
-
-		for( int i=0; i<label.rows; i++ ){
-			unsigned char* cline = (unsigned char*)src_image.ptr(i);
-			double* cline_label = (double*)label.ptr(i);
-			double* cline_strength = (double*)strength.ptr(i);
-
-			double* cline_next_label = (double*)next_label.ptr(i);
-			double* cline_next_strength = (double*)next_strength.ptr(i);
-
-			for( int h=0; h<label.cols; h++ ){
-				unsigned char* cpix = cline + 3 * h;
-				double* clabel = cline_label + h;
-				double* cstrength = cline_strength + h;
-
-				double* cnext_label = cline_next_label + h;
-				double* cnext_strength = cline_next_strength + h;
-
-				for( int neigh_y=-1; neigh_y<=1; neigh_y++ ){
-					if( i+neigh_y < 0 ||  label.rows <= i+neigh_y) continue;
-
-					unsigned char* nline = (unsigned char*)src_image.ptr(i+neigh_y);
-					double* nline_label = (double*)label.ptr(i+neigh_y);
-					double* nline_strength = (double*)strength.ptr(i+neigh_y);
-
-					for( int neigh_x=-1; neigh_x<=1; neigh_x++ ){
-
-						if( neigh_x == 0 && neigh_y == 0
-							|| h+neigh_x < 0 || label.cols <= h+neigh_x) continue;
-						
-						unsigned char* npix = nline + 3 * (h+neigh_x);
-						double* nlabel = nline_label + h+neigh_x;
-						double* nstrength = nline_strength + h+neigh_x;
-
-						double b = (double)npix[0] - cpix[0];
-						double g = (double)npix[1] - cpix[1];
-						double r = (double)npix[2] - cpix[2];
-
-						double C = b*b + g*g + r*r; 
-						double G = 1 - C / (3 * 255 * 255);
-
-						/*
-						if( G * strength.at<double>( i+neigh_y, h+neigh_x ) <= strength.at<double>( i, h )) continue;
-
-							converged++;
-
-						next_label.at<double>( i, h ) = label.at<double>( i+neigh_y, h+neigh_x );
-						next_strength.at<double>( i, h ) = G * strength.at<double>( i+neigh_y, h+neigh_x );
-						/*/
-						if( G * *nstrength <= *cstrength ) continue;
-
-						converged++;
-
-						//next_label.at<double>(i,h) = *nlabel;
-						//next_strength.at<double>(i,h) = G * *nstrength;
-						*cnext_label = *nlabel;
-						*cnext_strength = G * *nstrength;
-						//*/
-
-					}
-				}
-			}
-		}
-		
-		next_label.copyTo( label );
-		next_strength.copyTo( strength );
+		converged = _growCut.run_once();
 
 	}while( converged > 0 );
 }
@@ -365,14 +337,13 @@ int main( int argc, char** argv ){
 
 
 	if( do_grow_cut ){
+		imshow( "original", mparam.src_img );
 		Mat dst;
 		growCut( mparam.src_img, mparam.label_img, dst);
-		Mat crop_image, mask;
-		Mat dsts[] = {dst,dst,dst};
-		merge( dsts, 3, mask );
-		mparam.src_img.copyTo( crop_image, mask );
+		Mat crop_image;
+		crop_image = mparam.src_img * 0.5 + dst * 0.5;
 		imshow( "crop result", crop_image );
-		cout<< "finish" <<endl;
+		cout<< "finish(type any key to exit)" <<endl;
 		waitKey();
 	}
 
