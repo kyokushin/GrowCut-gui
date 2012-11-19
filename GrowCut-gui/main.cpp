@@ -1,3 +1,7 @@
+/*
+アルゴリズムのクラス化に伴い、こちらのmainプログラムは更新しないと思います。
+*/
+
 #include <iostream>
 #include <queue>
 
@@ -153,7 +157,7 @@ void mouse_func(int event, int x, int y, int flags, void* param){
 
 void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 
-	//���x���̐���
+	//���x���̐���
 	Mat label( label_image.size(), CV_64F );
 	for( int i=0; i<label_image.rows; i++ ){
 		unsigned char* line = (unsigned char*)label_image.ptr(i);
@@ -199,7 +203,7 @@ void growCut( Mat& src_image, Mat& label_image, Mat& dst ){
 		
 		itr_count++;
 		if( itr_count % 10 == 0 ){
-			//����
+			//����
 			for( int i=0; i<label.rows; i++ ){
 				unsigned char* dst_line = dst.ptr(i);
 				for( int h=0; h<label.cols; h++ ){
